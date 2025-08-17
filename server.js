@@ -16,7 +16,10 @@ const app = express();
 const PORT = process.env.PORT || 5050;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || "*",  // Allow your frontend domain
+  credentials: true
+}));
 app.use(express.json());
 
 // Health check route
@@ -31,17 +34,24 @@ app.use('/api/requests', requestRoutes);
 
 console.log('📌 Routes mounted: /api/auth, /api/inventory, /api/requests');
 
-// Connect to MongoDB and start server
+// Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
 .then(() => {
   console.log('✅ MongoDB connected');
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
-  });
+
+  // Only listen when NOT running in Vercel (Vercel uses serverless functions)
+  if (process.env.NODE_ENV !== "production") {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
+    });
+  }
 })
 .catch(err => {
   console.error('❌ MongoDB connection failed:', err.message);
 });
+
+// Export app for Vercel
+module.exports = app;
