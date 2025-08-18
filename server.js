@@ -1,6 +1,6 @@
 // Load environment variables
 require('dotenv').config();
-console.log('Loaded CLIENT_URL from .env:', process.env.CLIENT_URL);
+
 
 // Core
 const express = require('express');
@@ -17,32 +17,13 @@ const app = express();
 const PORT = process.env.PORT || 5050;
 
 /* -------------------------------------------------------------------------- */
-/*                               C O R S  (with middleware)                   */
+/*                               C O R S (Public Access)                      */
 /* -------------------------------------------------------------------------- */
 
-// Allowed origins come from CLIENT_URL (comma‑separated). Provide safe defaults.
-const allowedOrigins = (
-  process.env.CLIENT_URL ||
-  'https://vercel-frontend-6xa5cwk8-project-explorations-projects.vercel.app,http://localhost:3000'
-)
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-console.log('Loaded CLIENT_URL from .env:', process.env.CLIENT_URL);
-console.log('✅ CORS allow list:', allowedOrigins);
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-};
-
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: 'https://vercel-frontend-c2izxq2s5-project-explorations-projects.vercel.app',
+  credentials: true
+}));
 
 /* -------------------------------------------------------------------------- */
 
