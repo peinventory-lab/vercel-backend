@@ -1,65 +1,97 @@
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
+// Load environment variables
 require('dotenv').config();
 
-const app = express();
+// Core
+const express = require('express');
+const mongoose = require('mongoose');
 
-// ---------- CORS FIX START ----------
+// Routes
+const authRoutes = require('./routes/authRoutes');
+const inventoryRoutes = require('./routes/inventoryRoutes');
+const requestRoutes = require('./routes/requestRoutes');
+
+// App
+const app = express();
+const PORT = process.env.PORT || 5050;
+
+/* -------------------------------------------------------------------------- */
+/*                               C O R S  (manual)                            */
+/*  We set headers ourselves so preflight OPTIONS never reaches route code.   */
+/* -------------------------------------------------------------------------- */
+
+// Allowed origins come from CLIENT_URL (comma‑separated). Provide safe defaults.
 const allowedOrigins = (
   process.env.CLIENT_URL ||
   'https://vercel-frontend-6xa5cwk8-project-explorations-projects.vercel.app,http://localhost:3000'
-).split(',').map(s => s.trim()).filter(Boolean);
+)
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
-const corsOpts = {
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    return cb(null, allowedOrigins.includes(origin));
-  },
-  credentials: true,
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-};
+console.log('✅ CORS allow list:', allowedOrigins);
 
-app.use((req, res, next) => { res.setHeader('Vary', 'Origin'); next(); });
-
-app.use('/api', (req, res, next) => {
+// 1) Set CORS headers on every request
+app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  if (!origin || allowedOrigins.includes(origin)) {
+    // If no Origin (curl/server-to-server), echo first allowed so the header exists
+    res.setHeader('Access-Control-Allow-Origin', origin || allowedOrigins[0]);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Help caches/proxies vary by origin
+    res.setHeader('Vary', 'Origin');
   }
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-app.use(cors(corsOpts));
-app.options('*', cors(corsOpts));
-// ---------- CORS FIX END ----------
+// 2) Short‑circuit all OPTIONS (preflight) with a 204 + CORS headers
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+/* -------------------------------------------------------------------------- */
 
 app.use(express.json());
 
-// --------- MongoDB connection ---------
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Health check
+app.get('/', (req, res) => {
+  res.send('✅ API is running...');
+});
 
-// --------- Routes ---------
-const authRoutes = require('./routes/auth');
-const inventoryRoutes = require('./routes/inventory');
-const userRoutes = require('./routes/users');
-
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/requests', requestRoutes);
 
-// --------- Export for Vercel ---------
-module.exports = app;
+console.log('📌 Routes mounted: /api/auth, /api/inventory, /api/requests');
 
-// If running locally
-if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+/* ---------------------------- MongoDB & listen ----------------------------- */
+
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+  console.error('❌ Missing MONGO_URI env var');
 }
+
+// Use lean defaults; Mongoose 7+ doesn’t need the old options
+mongoose
+  .connect(mongoUri)
+  .then(() => {
+    console.log('✅ MongoDB connected');
+
+    // Vercel serverless: DO NOT app.listen() in production
+    if (process.env.NODE_ENV !== 'production') {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running at http://localhost:${PORT}`);
+      });
+    }
+  })
+  .catch(err => {
+    console.error('❌ MongoDB connection failed:', err.message);
+  });
+
+/* ------------------------------- Export app -------------------------------- */
+module.exports = app;
