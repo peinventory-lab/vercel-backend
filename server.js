@@ -15,29 +15,51 @@ const requestRoutes = require('./routes/requestRoutes');
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-// Middleware
+/* ----------------------------- CORS (important) ----------------------------- */
+// Allow list comes from CLIENT_URL (comma-separated), with safe defaults
+const allowedOrigins = (
+  process.env.CLIENT_URL ||
+  'https://vercel-frontend-six-xi.vercel.app,http://localhost:3000'
+)
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+console.log('✅ CORS allow list:', allowedOrigins);
+
+// Helps caches/proxies vary on Origin and avoid weird caching issues
+app.use((req, res, next) => {
+  res.setHeader('Vary', 'Origin');
+  next();
+});
+
 app.use(cors({
-  origin: [
-    "https://vercel-frontend-six-xi.vercel.app", // ✅ Your frontend
-    "http://localhost:3000" // ✅ Keep localhost for testing
-  ],
-  credentials: true
+  origin: (origin, cb) => {
+    // Allow same-origin / server-to-server / curl (no Origin header)
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
 app.use(express.json());
 
-// Health check route
+/* ----------------------------- Health check ----------------------------- */
 app.get('/', (req, res) => {
   res.send('✅ API is running...');
 });
 
-// Mount API routes
+/* ----------------------------- API routes ----------------------------- */
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/requests', requestRoutes);
 
 console.log('📌 Routes mounted: /api/auth, /api/inventory, /api/requests');
 
-// Connect to MongoDB
+/* ------------------------- Mongo & local listener ------------------------- */
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -45,8 +67,8 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => {
   console.log('✅ MongoDB connected');
 
-  // Only listen when running locally, not in Vercel
-  if (process.env.NODE_ENV !== "production") {
+  // In Vercel we export the app; only listen locally
+  if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
     });
@@ -56,5 +78,5 @@ mongoose.connect(process.env.MONGO_URI, {
   console.error('❌ MongoDB connection failed:', err.message);
 });
 
-// Export app for Vercel
+/* ------------------------------ Export for Vercel ------------------------------ */
 module.exports = app;
