@@ -11,10 +11,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 
 /* ----------------------------- Mail transporter ----------------------------- */
-/**
- * In production, set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM.
- * If not set (dev), we use Ethereal so you can preview emails via URL.
- */
 async function makeTransporter() {
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     return nodemailer.createTransport({
@@ -24,8 +20,6 @@ async function makeTransporter() {
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     });
   }
-
-  // Dev fallback (preview only)
   const test = await nodemailer.createTestAccount();
   console.warn('⚠️ Using Ethereal dev SMTP. Set real SMTP_* env vars for production.');
   return nodemailer.createTransport({
@@ -37,26 +31,41 @@ async function makeTransporter() {
 }
 
 /* --------------------------------- Signup ---------------------------------- */
-// body: { username, email, password, role? }
+// body: { username, password, role?, email? }  // email is OPTIONAL
 router.post('/signup', async (req, res) => {
   try {
-    const { username, email, password, role } = req.body || {};
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: 'Username, email and password are required.' });
+    const { username, password, role, email } = req.body || {};
+
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required.' });
     }
 
-    const existing = await User.findOne({
-      $or: [{ username }, { email: email.toLowerCase().trim() }],
-    });
-    if (existing) return res.status(400).json({ message: 'Username or email already exists.' });
+    // Require unique username
+    const existingByUsername = await User.findOne({ username: username.trim() });
+    if (existingByUsername) {
+      return res.status(400).json({ message: 'Username already exists.' });
+    }
+
+    // If email is provided, ensure it is unique too
+    let normalizedEmail;
+    if (email) {
+      normalizedEmail = String(email).toLowerCase().trim();
+      const existingByEmail = await User.findOne({ email: normalizedEmail });
+      if (existingByEmail) {
+        return res.status(400).json({ message: 'Email already exists.' });
+      }
+    }
 
     const hashed = await bcrypt.hash(password, 10);
-    await User.create({
+
+    const userDoc = {
       username: username.trim(),
-      email: email.toLowerCase().trim(),
       password: hashed,
       role: role || 'stembassador',
-    });
+    };
+    if (normalizedEmail) userDoc.email = normalizedEmail;
+
+    await User.create(userDoc);
 
     return res.status(201).json({ message: 'User created successfully.' });
   } catch (err) {
@@ -66,7 +75,7 @@ router.post('/signup', async (req, res) => {
 });
 
 /* ---------------------------------- Login ---------------------------------- */
-// body: { username, password }  (you can allow email login by swapping the lookup)
+// body: { username, password }  // supports username OR email in "username" field
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body || {};
@@ -74,8 +83,13 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
 
-    // To support username OR email, use: { $or: [{ username }, { email: username.toLowerCase() }] }
-    const user = await User.findOne({ username });
+    // If the login input looks like an email, try email, else username
+    const looksLikeEmail = String(username).includes('@');
+    const query = looksLikeEmail
+      ? { email: String(username).toLowerCase().trim() }
+      : { username: username.trim() };
+
+    const user = await User.findOne(query);
     if (!user) return res.status(400).json({ message: 'Invalid username or password.' });
 
     const ok = await bcrypt.compare(password, user.password);
@@ -98,7 +112,7 @@ router.post('/login', async (req, res) => {
 router.post('/forgot-password', async (req, res) => {
   try {
     const email = (req.body?.email || '').toLowerCase().trim();
-    // Always respond 200 to prevent user enumeration
+
     const safeOk = () =>
       res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
 
@@ -107,7 +121,6 @@ router.post('/forgot-password', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return safeOk();
 
-    // Create raw token (send to user) and hashed token (store in DB)
     const raw = crypto.randomBytes(32).toString('hex');
     const hash = crypto.createHash('sha256').update(raw).digest('hex');
 
@@ -134,7 +147,6 @@ router.post('/forgot-password', async (req, res) => {
       const preview = nodemailer.getTestMessageUrl(info);
       if (preview) console.log('✉️ Ethereal preview:', preview);
     } catch (mailErr) {
-      // Do not leak mail errors to client; still reply OK.
       console.error('Email send error:', mailErr.message);
     }
 

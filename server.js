@@ -17,7 +17,10 @@ const PORT = process.env.PORT || 5050;
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || "*",  // Allow your frontend domain
+  origin: [
+    "https://vercel-frontend-six-xi.vercel.app", // ✅ Your frontend
+    "http://localhost:3000" // ✅ Keep localhost for testing
+  ],
   credentials: true
 }));
 app.use(express.json());
@@ -42,7 +45,7 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => {
   console.log('✅ MongoDB connected');
 
-  // Only listen when NOT running in Vercel (Vercel uses serverless functions)
+  // Only listen when running locally, not in Vercel
   if (process.env.NODE_ENV !== "production") {
     app.listen(PORT, () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
