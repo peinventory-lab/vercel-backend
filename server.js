@@ -1,9 +1,11 @@
 // Load environment variables
 require('dotenv').config();
+console.log('Loaded CLIENT_URL from .env:', process.env.CLIENT_URL);
 
 // Core
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
@@ -15,8 +17,7 @@ const app = express();
 const PORT = process.env.PORT || 5050;
 
 /* -------------------------------------------------------------------------- */
-/*                               C O R S  (manual)                            */
-/*  We set headers ourselves so preflight OPTIONS never reaches route code.   */
+/*                               C O R S  (with middleware)                   */
 /* -------------------------------------------------------------------------- */
 
 // Allowed origins come from CLIENT_URL (comma‑separated). Provide safe defaults.
@@ -27,31 +28,21 @@ const allowedOrigins = (
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
-
+console.log('Loaded CLIENT_URL from .env:', process.env.CLIENT_URL);
 console.log('✅ CORS allow list:', allowedOrigins);
 
-// 1) Set CORS headers on every request
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (!origin || allowedOrigins.includes(origin)) {
-    // If no Origin (curl/server-to-server), echo first allowed so the header exists
-    res.setHeader('Access-Control-Allow-Origin', origin || allowedOrigins[0]);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    // Help caches/proxies vary by origin
-    res.setHeader('Vary', 'Origin');
-  }
-  next();
-});
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
 
-// 2) Short‑circuit all OPTIONS (preflight) with a 204 + CORS headers
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    return res.sendStatus(204);
-  }
-  next();
-});
+app.use(cors(corsOptions));
 
 /* -------------------------------------------------------------------------- */
 
@@ -76,7 +67,6 @@ if (!mongoUri) {
   console.error('❌ Missing MONGO_URI env var');
 }
 
-// Use lean defaults; Mongoose 7+ doesn’t need the old options
 mongoose
   .connect(mongoUri)
   .then(() => {
