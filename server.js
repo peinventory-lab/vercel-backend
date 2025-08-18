@@ -27,23 +27,37 @@ const allowedOrigins = (
 
 console.log('✅ CORS allow list:', allowedOrigins);
 
-// Helps caches/proxies vary on Origin and avoid weird caching issues
+// Make caches/proxies vary on Origin and avoid weird caching issues
 app.use((req, res, next) => {
   res.setHeader('Vary', 'Origin');
   next();
 });
 
-app.use(cors({
-  origin: (origin, cb) => {
-    // Allow same-origin / server-to-server / curl (no Origin header)
-    if (!origin) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error(`Not allowed by CORS: ${origin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+const corsOptionsDelegate = (req, cb) => {
+  const origin = req.header('Origin');
+  // Allow same-origin / server-to-server / curl (no Origin header)
+  if (!origin || allowedOrigins.includes(origin)) {
+    cb(null, {
+      origin: true,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
+  } else {
+    cb(new Error(`Not allowed by CORS: ${origin}`));
+  }
+};
+
+// Main CORS
+app.use(cors(corsOptionsDelegate));
+// Ensure OPTIONS (preflight) succeeds quickly
+app.options('*', cors(corsOptionsDelegate));
+
+// Keep credential header explicit (some proxies strip it)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  next();
+});
 
 app.use(express.json());
 
@@ -60,23 +74,23 @@ app.use('/api/requests', requestRoutes);
 console.log('📌 Routes mounted: /api/auth, /api/inventory, /api/requests');
 
 /* ------------------------- Mongo & local listener ------------------------- */
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ MongoDB connected');
+mongoose
+  .connect(process.env.MONGO_URI, {
+    // modern defaults
+  })
+  .then(() => {
+    console.log('✅ MongoDB connected');
 
-  // In Vercel we export the app; only listen locally
-  if (process.env.NODE_ENV !== 'production') {
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running at http://localhost:${PORT}`);
-    });
-  }
-})
-.catch(err => {
-  console.error('❌ MongoDB connection failed:', err.message);
-});
+    // In Vercel we export the app; only listen locally
+    if (process.env.NODE_ENV !== 'production') {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running at http://localhost:${PORT}`);
+      });
+    }
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection failed:', err.message);
+  });
 
 /* ------------------------------ Export for Vercel ------------------------------ */
 module.exports = app;
