@@ -15,8 +15,11 @@ const requestRoutes = require('./routes/requestRoutes');
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-/* ----------------------------- CORS (important) ----------------------------- */
-// Allow list comes from CLIENT_URL (comma-separated), with safe defaults
+// In Vercel, requests come through a proxy
+app.set('trust proxy', 1);
+
+/* --------------------------- CORS configuration --------------------------- */
+// Allow-list (comma-separated); fallback to your Vercel FE + localhost
 const allowedOrigins = (
   process.env.CLIENT_URL ||
   'https://vercel-frontend-six-xi.vercel.app,http://localhost:3000'
@@ -27,38 +30,38 @@ const allowedOrigins = (
 
 console.log('✅ CORS allow list:', allowedOrigins);
 
-// Make caches/proxies vary on Origin and avoid weird caching issues
+// Always vary on origin to keep caches honest
 app.use((req, res, next) => {
   res.setHeader('Vary', 'Origin');
   next();
 });
 
-const corsOptionsDelegate = (req, cb) => {
+// Build per-request CORS options
+const corsOptionsDelegate = (req, callback) => {
   const origin = req.header('Origin');
-  // Allow same-origin / server-to-server / curl (no Origin header)
-  if (!origin || allowedOrigins.includes(origin)) {
-    cb(null, {
-      origin: true,
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    });
-  } else {
-    cb(new Error(`Not allowed by CORS: ${origin}`));
-  }
+  const isAllowed = !origin || allowedOrigins.includes(origin);
+
+  // When allowed, mirror the origin (important if credentials are true)
+  const opts = {
+    origin: isAllowed ? (origin || true) : false,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  };
+  callback(isAllowed ? null : new Error(`Not allowed by CORS: ${origin}`), opts);
 };
 
-// Main CORS
+// Apply CORS for all requests + ensure preflights succeed
 app.use(cors(corsOptionsDelegate));
-// Ensure OPTIONS (preflight) succeeds quickly
 app.options('*', cors(corsOptionsDelegate));
 
-// Keep credential header explicit (some proxies strip it)
+// Some environments/proxies drop this—force it on every response
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
 
+// Body parsing
 app.use(express.json());
 
 /* ----------------------------- Health check ----------------------------- */
@@ -75,9 +78,7 @@ console.log('📌 Routes mounted: /api/auth, /api/inventory, /api/requests');
 
 /* ------------------------- Mongo & local listener ------------------------- */
 mongoose
-  .connect(process.env.MONGO_URI, {
-    // modern defaults
-  })
+  .connect(process.env.MONGO_URI) // modern defaults
   .then(() => {
     console.log('✅ MongoDB connected');
 
