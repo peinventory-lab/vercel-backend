@@ -31,6 +31,7 @@ async function makeTransporter() {
 }
 
 /* --------------------------------- Signup ---------------------------------- */
+// body: { username, password, role?, email? }  // email is OPTIONAL
 router.post('/signup', async (req, res) => {
   try {
     const { username, password, role, email } = req.body || {};
@@ -39,11 +40,13 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
 
+    // Require unique username
     const existingByUsername = await User.findOne({ username: username.trim() });
     if (existingByUsername) {
       return res.status(400).json({ message: 'Username already exists.' });
     }
 
+    // If email is provided, ensure it is unique too
     let normalizedEmail;
     if (email) {
       normalizedEmail = String(email).toLowerCase().trim();
@@ -72,29 +75,24 @@ router.post('/signup', async (req, res) => {
 });
 
 /* ---------------------------------- Login ---------------------------------- */
+// body: { username, password }  // supports username OR email in "username" field
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body || {};
-    console.log('➡️ Login request body:', req.body);
-
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
 
+    // If the login input looks like an email, try email, else username
     const looksLikeEmail = String(username).includes('@');
     const query = looksLikeEmail
       ? { email: String(username).toLowerCase().trim() }
       : { username: username.trim() };
 
-    console.log('🔍 Login query:', query);
     const user = await User.findOne(query);
-    console.log('👤 Found user:', user);
-
     if (!user) return res.status(400).json({ message: 'Invalid username or password.' });
 
     const ok = await bcrypt.compare(password, user.password);
-    console.log('🔐 Password match:', ok);
-
     if (!ok) return res.status(400).json({ message: 'Invalid username or password.' });
 
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '2h' });
@@ -110,6 +108,7 @@ router.post('/login', async (req, res) => {
 });
 
 /* ----------------------------- Forgot password ----------------------------- */
+// body: { email }
 router.post('/forgot-password', async (req, res) => {
   try {
     const email = (req.body?.email || '').toLowerCase().trim();
@@ -160,6 +159,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 /* ------------------------------ Reset password ----------------------------- */
+// params: { token }   body: { password }
 router.post('/reset-password/:token', async (req, res) => {
   try {
     const raw = req.params.token || req.body.token;
