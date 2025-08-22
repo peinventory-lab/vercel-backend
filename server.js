@@ -14,7 +14,7 @@ const requestRoutes = require('./routes/requestRoutes');
 
 // App
 const app = express();
-const PORT = process.env.PORT || 5050;
+const PORT = process.env.PORT || 5050; 
 
 /* -------------------------------------------------------------------------- */
 /*                               C O R S (Public Access)                      */
