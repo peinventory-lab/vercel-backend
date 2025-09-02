@@ -3,8 +3,8 @@ const express = require('express');
 const router = express.Router();
 const InventoryItem = require('../models/InventoryItem');
 
-// GET /api/inventory - Fetch all inventory items
-router.get('/', async (req, res) => {
+// Reusable handler to fetch all items
+async function getAll(req, res) {
   try {
     const items = await InventoryItem.find();
     res.status(200).json(items);
@@ -12,7 +12,13 @@ router.get('/', async (req, res) => {
     console.error('❌ Error fetching inventory:', err);
     res.status(500).json({ message: 'Failed to fetch inventory' });
   }
-});
+}
+
+// GET /api/inventory - Fetch all inventory items
+router.get('/', getAll);
+
+// GET /api/inventory/all - Alias for older/frontend code
+router.get('/all', getAll);
 
 // POST /api/inventory/add - Add a new inventory item
 router.post('/add', async (req, res) => {
