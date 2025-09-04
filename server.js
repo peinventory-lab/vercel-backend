@@ -21,7 +21,8 @@ const PORT = process.env.PORT || 5050;
 /* -------------------------------------------------------------------------- */
 
 app.use(cors({
-  origin: 'https://vercel-frontend-c2izxq2s5-project-explorations-projects.vercel.app',
+  // origin: 'https://vercel-frontend-c2izxq2s5-project-explorations-projects.vercel.app',
+  origin: 'https://vercel-frontend-six-xi.vercel.app',
   credentials: true
 }));
 
